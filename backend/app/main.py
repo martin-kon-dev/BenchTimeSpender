@@ -2,12 +2,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI
-from sqlalchemy import create_engine, select
+from fastapi import Depends, FastAPI, HTTPException, Response
+from sqlalchemy import create_engine, delete, event, select
 from sqlalchemy.orm import Session
 
 from .database import Base, get_session
-from .models import Activity
+from .models import Activity, RunningTimer, TimeEntry
 from .schemas import ActivityCreate, ActivityRead
 from .tracking import router as tracking_router
 
@@ -26,6 +26,12 @@ def create_app(database_url: str | None = None) -> FastAPI:
             yield
         finally:
             engine.dispose()
+
+    @event.listens_for(engine, "connect")
+    def enable_foreign_keys(connection, _record):
+        cursor = connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
     application = FastAPI(title="BenchTimeSpender", lifespan=lifespan)
     application.state.engine = engine
@@ -46,6 +52,21 @@ def create_app(database_url: str | None = None) -> FastAPI:
         session.commit()
         session.refresh(activity)
         return activity
+
+    @application.delete("/api/activities/{activity_id}", status_code=204)
+    def delete_activity(activity_id: int, session: Annotated[Session, Depends(get_session)]):
+        # Reserve the SQLite write transaction before checking the timer. Concurrent
+        # timer starts and manual entries must wait until deletion commits.
+        session.connection().exec_driver_sql("BEGIN IMMEDIATE")
+        activity = session.get(Activity, activity_id)
+        if activity is None:
+            raise HTTPException(404, "Activity not found.")
+        if session.scalar(select(RunningTimer).where(RunningTimer.activity_id == activity_id)):
+            raise HTTPException(409, "Stop and save the timer before deleting this activity.")
+        session.execute(delete(TimeEntry).where(TimeEntry.activity_id == activity_id))
+        session.delete(activity)
+        session.commit()
+        return Response(status_code=204)
 
     return application
 

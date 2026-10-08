@@ -27,6 +27,7 @@ def get_timer(session: DatabaseSession):
 
 @router.post("/timer/start", response_model=TimerRead, status_code=201)
 def start_timer(data: TimerStart, session: DatabaseSession):
+    session.connection().exec_driver_sql("BEGIN IMMEDIATE")
     require_activity(session, data.activity_id)
     timer = RunningTimer(slot=1, id=str(uuid4()), activity_id=data.activity_id, started_at=int(time.time()))
     session.add(timer)
@@ -65,6 +66,7 @@ def list_time_entries(session: DatabaseSession):
 
 @router.post("/time-entries", response_model=TimeEntryRead, status_code=201)
 def create_manual_entry(data: ManualEntryCreate, session: DatabaseSession):
+    session.connection().exec_driver_sql("BEGIN IMMEDIATE")
     require_activity(session, data.activity_id)
     start = data.started_at.timestamp()
     if start + data.duration_seconds > time.time():

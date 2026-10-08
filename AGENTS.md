@@ -34,4 +34,4 @@ BenchTimeSpender is a personal learning project for an experienced C#/.NET devel
 
 ## Current milestone
 
-The project supports activity listing/creation, a persistent start/stop timer, and manual time entries in SQLite. Active/completed counts use completion percentages; activity totals and the local Monday-based weekly total use saved time entries. Running timers resume after refresh or server restart. Editing activities, progress history, notes, and richer daily/weekly dashboards remain future work.
+The project supports activity listing/creation/deletion, a persistent start/stop timer, and manual time entries in SQLite. The dashboard uses the Focus layout with modal forms and collapsible descriptions/history. Deleting an activity requires UI confirmation, removes its time entries atomically, and is blocked by the API while its timer runs. Active/completed counts use completion percentages; activity totals and the local Monday-based weekly total use saved time entries. Running timers resume after refresh or server restart. Editing activities, progress history, notes, and richer daily/weekly dashboards remain future work.

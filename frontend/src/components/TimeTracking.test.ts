@@ -69,7 +69,6 @@ describe('time tracking', () => {
     await wrapper.get('[data-testid="timer-toggle"]').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('Timer stopped. Time saved.')
-    expect(wrapper.text()).toContain('00:01:05')
     expect(wrapper.emitted('entriesChanged')?.at(-1)?.[0]).toEqual([expect.objectContaining({ duration_seconds: 65 })])
     wrapper.unmount()
   })
@@ -99,7 +98,7 @@ describe('time tracking', () => {
       body: JSON.stringify({ activity_id: 1, started_at: new Date('2026-01-04T10:00').toISOString(), duration_seconds: 4500 }),
     }))
     expect(wrapper.text()).toContain('Manual entry saved.')
-    expect(wrapper.text()).toContain('01:15:00')
+    expect(wrapper.emitted('entriesChanged')?.at(-1)?.[0]).toEqual([expect.objectContaining({ duration_seconds: 4500 })])
     expect(wrapper.find('form').exists()).toBe(false)
     wrapper.unmount()
   })
@@ -115,6 +114,29 @@ describe('time tracking', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('finish in the past')
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
     expect(wrapper.find('form').exists()).toBe(true)
+    await wrapper.get('dialog .connection-button').trigger('click')
+    expect(wrapper.find('form').exists()).toBe(false)
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps the manual-entry draft and error in the dialog when saving fails', async () => {
+    const fetchMock = mockServer()
+    const server = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (url === '/api/time-entries' && options?.method === 'POST') return new Response('', { status: 503 })
+      return server(url, options)
+    })
+    const wrapper = mount(TimeTracking, { props: { activities } })
+    await flushPromises()
+    await wrapper.get('.manual-button').trigger('click')
+    await wrapper.get('input[name="started_at"]').setValue('2026-01-04T10:00')
+    await wrapper.get('input[name="hours"]').setValue(1)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.get('dialog [role="alert"]').text()).toContain('HTTP 503')
+    expect((wrapper.get('input[name="hours"]').element as HTMLInputElement).value).toBe('1')
+    expect(wrapper.get('button[type="submit"]').attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 

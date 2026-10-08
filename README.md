@@ -24,11 +24,13 @@ BenchTimeSpender/
 └── frontend/       # Vue application and Vitest tests
 ```
 
-The backend stores activities, time entries, and the running timer in SQLite using SQLAlchemy. The Vue dashboard provides activity creation, a start/stop timer, manual time entry, progress bars, activity time totals, and a weekly recorded-time summary. A live backend check is also available.
+The backend stores activities, time entries, and the running timer in SQLite using SQLAlchemy. The Vue dashboard puts the timer first, with compact activity rows and a weekly recorded-time summary. Activity creation and manual entry use dialogs; descriptions and recent entries expand on demand.
+
+The header's Light/Dark toggle switches the entire page and dialogs. It follows the system theme until you choose a theme, then remembers your choice in this browser's local storage.
 
 ## Current status
 
-The Git repository is connected to GitHub as `origin`. The application supports activity listing/creation and time tracking. Activity editing, progress history, notes, and richer daily/weekly productivity dashboards are upcoming work.
+The Git repository is connected to GitHub as `origin`. The application supports activity listing, creation, deletion, and time tracking. Activity editing, progress history, notes, and richer daily/weekly productivity dashboards are upcoming work.
 
 ## Backend setup (PowerShell)
 
@@ -56,9 +58,11 @@ After dependency changes, stop the server, rerun the editable install command, t
 
 - `GET /api/activities` lists activities in creation order.
 - `POST /api/activities` creates an activity and returns HTTP 201 with its generated ID.
+- `DELETE /api/activities/{id}` permanently removes an activity and its saved time entries in one transaction; returns HTTP 204, HTTP 404 for an unknown activity, or HTTP 409 while that activity has a running timer. Another activity can be deleted while the timer runs. Deletion reduces recorded totals.
 - Title and category are required and trimmed, with limits of 200 and 100 characters. Description is optional and limited to 2,000 characters. Completion percentage must be an integer from 0 through 100 and defaults to 0. Invalid requests return HTTP 422.
 - The database starts empty and is created at `backend/benchtime.db` on server startup. This file is ignored by Git. Data survives refreshes and server restarts.
 - Use **New activity** in the dashboard, complete the form, and click **Save activity**. Refresh the page to confirm it reloads from SQLite.
+- Use **Delete** on an activity and review the confirmation before deleting. Stop and save its running timer first. Cancel or Escape closes a dialog while idle; dialogs stay open while a request is being saved.
 - Active means completion below 100%; completed means 100%. Completion percentage is independent of time recorded.
 
 `models.py` defines database mappings, similar to EF Core entities. `schemas.py` defines validated HTTP request/response models, similar to DTOs. A SQLAlchemy `Session` tracks changes and `commit()` writes them, similar to `DbContext.SaveChanges()`. FastAPI injects a session per request through `Depends`; `yield` lets the dependency close it afterward.
@@ -67,12 +71,12 @@ After dependency changes, stop the server, rerun the editable install command, t
 
 ## Timer and manual time entries
 
-1. Choose an activity under **Time tracking** and click **Build timer**.
+1. Choose an activity in the focus panel and click **Start timer**.
 2. The timer continues across page refreshes and server restarts, using its persisted server start time. Only one timer can run at a time across browser tabs.
 3. Click **Stop & save** to record its duration. A stop lasting less than a second records one second. The elapsed display is based on timestamps rather than counting interval ticks.
 4. For past work, click **Manual entry**, select an activity, enter a local start date/time and hours/minutes, then click **Save time entry**. The UI supports durations from one minute to 24 hours; the API accepts one second to 24 hours. Entries must finish in the past.
 
-The browser converts manual start times to UTC. The database stores UTC epoch seconds; the UI displays dates in the browser's local timezone. Recent entries show the last five records. Activity totals include all saved entries. The weekly total counts the part of each saved entry between local Monday midnight and now; it excludes a timer that is still running. Overlapping entries are allowed and summed independently.
+The browser converts manual start times to UTC. The database stores UTC epoch seconds; the UI displays dates in the browser's local timezone. Expand **Recent time entries** to see the last five records. Activity totals include all saved entries. The weekly total counts the part of each saved entry between local Monday midnight and now; it excludes a timer that is still running. Overlapping entries are allowed and summed independently.
 
 API routes:
 
@@ -94,9 +98,9 @@ npm ci
 npm run dev
 ```
 
-Open http://127.0.0.1:5173 and click **Check backend**. The page should display **Backend status: ok**. Stop FastAPI and try again to see an error; restart it and retry to recover. Stop either server with Ctrl+C in its terminal.
+Open http://127.0.0.1:5173. Create an activity, select it, and start a timer to verify the API connection. If FastAPI is stopped, the dashboard displays loading errors with retry buttons. Stop either server with Ctrl+C in its terminal.
 
-The browser sends `/api/health` to Vite on port 5173. Vite forwards it unchanged to FastAPI on port 8000 and returns the JSON response. This keeps browser requests on the frontend's origin during development. The proxy is for development only; production hosting is deferred.
+The browser sends `/api` requests to Vite on port 5173. Vite forwards them unchanged to FastAPI on port 8000 and returns the JSON response. This keeps browser requests on the frontend's origin during development. The proxy is for development only; production hosting is deferred. The health endpoint remains available at `/api/health` for diagnostics.
 
 To verify the frontend:
 
@@ -114,9 +118,9 @@ The tests mock HTTP requests to exercise the component independently of FastAPI.
 - `ref(...)` stores reactive state. Update it using `.value` in TypeScript; Vue unwraps refs automatically in templates.
 - `@click` binds an event handler, `:disabled` binds a property, and `v-if` conditionally renders content.
 - `fetch` performs HTTP requests; `await` waits for the response and JSON body. Check `response.ok` because HTTP error responses do not automatically reject the promise.
-- `HealthResponse` describes the JSON shape for TypeScript tooling. Type annotations do not validate JSON at runtime.
+- TypeScript types describe JSON shapes for tooling; they do not validate JSON at runtime.
 
-The connection example also displays the `message` returned by FastAPI. Its TypeScript response type and the backend and frontend tests describe the same response contract.
+`AppDialog.vue` wraps the native HTML `dialog` element. `showModal()` lets the browser manage focus and block interaction with the background. Vue `defineEmits` declares typed component events, much like a C# event contract. The timer emits saved entries to the parent dashboard, which recalculates the totals.
 
 ## Milestone 1 sequence
 

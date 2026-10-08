@@ -1,92 +1,92 @@
 :root {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  color: #0b0b0b;
-  background: #fafafa;
+  color-scheme: light dark;
+  --surface: light-dark(#fcfcfc, #18181b);
+  --ink: light-dark(#141414, #f4f4f5);
+  --muted: light-dark(#596575, #a1a1aa);
+  --line: light-dark(#e6e7e9, #343438);
+  --soft: light-dark(#f2f3f4, #252529);
+  --green: light-dark(#2da44e, #4ade80);
+  --button: light-dark(#161616, #f4f4f5);
+  --button-ink: light-dark(#fff, #161616);
+  --danger: light-dark(#b42318, #fda29b);
+  color: var(--ink);
+  background: light-dark(#f5f5f6, #101012);
   font-size: 14px;
   line-height: 1.5;
   font-synthesis: none;
 }
 * { box-sizing: border-box; }
-body { margin: 0; padding: 4px; }
-button { font: inherit; }
+body { margin: 0; padding: 28px 16px; }
 h1, h2, h3, p, dl, dd { margin: 0; }
-h1, h2, h3 { font-size: 16px; font-weight: 600; }
-.dashboard {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 15px 12px 12px;
-  border: 1px solid #dfdfdf;
-  border-radius: 18px;
-  background: #fcfcfc;
-}
-.dashboard-header, .brand, .section-heading, .activity-details,
-.tracking-heading, .timer, .tracking-actions, .backend-check {
-  display: flex;
-  align-items: center;
-}
-.dashboard-header, .section-heading, .activity-details, .tracking-heading { justify-content: space-between; gap: 16px; }
-.brand { gap: 7px; }
-.icon { width: 20px; height: 20px; flex-shrink: 0; }
-.badge { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 20px; background: #ededed; }
-.subtitle { margin-top: 14px; color: #526176; font-size: 12px; }
-.metrics { display: grid; grid-template-columns: repeat(3, 1fr); padding: 22px 12px 25px; gap: 16px; }
-.metrics dt { font-size: 11px; color: #526176; }
-.metrics dd { font-size: 20px; font-weight: 600; margin-top: 3px; }
-.completed { color: #16a34a; }
-.muted { color: #526176; font-size: 12px; }
-.section-heading { margin-bottom: 13px; }
-.activity-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.activity-card { border: 1px solid #dedede; border-radius: 9px; padding: 14px 12px 12px; }
-.activity-details { margin-bottom: 7px; }
-.activity-details .muted { margin-top: 3px; }
-.percentage { font-size: 15px; font-weight: 600; flex-shrink: 0; }
-.progress-track { height: 7px; border-radius: 12px; background: #f5f5f5; overflow: hidden; }
-.progress-fill { height: 100%; border-radius: inherit; }
-.tracking { padding: 25px 12px 0; }
-.tracking-heading .muted { margin-top: 3px; }
-.timer { gap: 7px; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.timer-icon { color: #2da44e; width: 17px; height: 17px; }
-.tracking-actions { gap: 8px; margin-top: 7px; }
-.tracking-actions button { border-radius: 24px; height: 37px; font-weight: 600; padding: 0 16px; cursor: not-allowed; }
-.timer-button { display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1; border: 1px solid #101010; background: #101010; color: white; }
-.timer-button .icon { width: 16px; height: 16px; }
-.manual-button { border: 1px solid #d5d5d5; color: #666; background: transparent; white-space: nowrap; }
-footer { margin-top: 22px; }
-.backend-check { flex-wrap: wrap; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8e8e8; }
-.connection-button { background: transparent; color: #334155; border: 1px solid #d5d5d5; border-radius: 6px; padding: 4px 9px; font-size: 12px; cursor: pointer; }
-.connection-button:disabled { cursor: wait; opacity: 0.6; }
-button:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
-[role='alert'] { color: #b91c1c; }
-@media (max-width: 480px) {
-  body { padding: 8px; }
-  .dashboard { padding: 14px 10px; }
-  .tracking { padding: 22px 0 0; }
-  .tracking-heading { align-items: flex-start; flex-direction: column; gap: 9px; }
-  .metrics { padding-inline: 0; }
-  .activity-card h3 { font-size: 14px; }
-}
-
-.activity-form { display: grid; gap: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid #ddd; border-radius: 9px; }
-.activity-form label { display: grid; gap: 4px; font-size: 12px; color: #526176; }
-.activity-form input, .activity-form textarea { width: 100%; font: inherit; font-size: 14px; color: #111; background: white; border: 1px solid #ccc; border-radius: 5px; padding: 8px; }
-.activity-form textarea { resize: vertical; }
-.save-button { justify-self: start; padding: 7px 14px; border: 0; border-radius: 6px; background: #101010; color: white; cursor: pointer; }
-.save-button:disabled { opacity: 0.6; cursor: wait; }
-.empty-state, .load-error { padding: 22px 12px; border: 1px dashed #ddd; border-radius: 9px; color: #526176; font-size: 13px; }
+h1 { font-size: 19px; font-weight: 600; letter-spacing: -.4px; }
+h2, h3 { font-size: 14px; font-weight: 600; }
+button { font: inherit; font-size: 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); cursor: pointer; white-space: nowrap; }
+button:disabled { opacity: .55; cursor: not-allowed; }
+button:focus-visible, summary:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.dashboard { max-width: 800px; margin: 0 auto; padding: 28px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+.dashboard-header, .brand, .section-heading, .activity-details, .tracking-heading, .activity-actions, .dialog-actions { display: flex; align-items: center; gap: 12px; }
+.dashboard-header, .section-heading, .activity-details, .tracking-heading { justify-content: space-between; }
+.dashboard-header { align-items: flex-start; }
+.header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.theme-toggle { min-width: 58px; }
+.brand { gap: 8px; }
+.icon { width: 19px; height: 19px; flex-shrink: 0; }
+.subtitle { color: var(--muted); font-size: 12px; margin-top: 5px; }
+.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 22px 0; }
+.metrics dt { color: var(--muted); font-size: 12px; }
+.metrics dd { font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums; margin-top: 4px; }
+.muted { color: var(--muted); font-size: 12px; }
+.section-heading { margin-bottom: 8px; }
+.activity-list { list-style: none; padding: 0; margin: 0; }
+.activity-card { border-bottom: 1px solid var(--line); padding: 15px 0; }
+.activity-details { flex-wrap: wrap; }
+.activity-copy { flex: 1 1 180px; min-width: 0; }
+.activity-copy h3 { font-weight: 500; overflow-wrap: anywhere; }
+.activity-copy .muted { margin-top: 3px; }
+.activity-actions { gap: 14px; }
+.percentage { font-size: 13px; font-variant-numeric: tabular-nums; }
+.delete-button { color: var(--danger); }
+.progress-track { height: 3px; border-radius: 8px; background: var(--soft); margin-top: 11px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--green); border-radius: inherit; }
+.activity-description { color: var(--muted); font-size: 12px; margin-top: 10px; }
+.activity-description p { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 8px; }
+summary { cursor: pointer; }
+.tracking { border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin: 22px 0; }
+.tracking-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; margin-top: 14px; }
+.timer { font-size: 25px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.timer-button, .save-button { background: var(--button); color: var(--button-ink); border-color: var(--button); }
+input, textarea, select { width: 100%; font: inherit; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+textarea { resize: vertical; }
+.tracking > .muted, .tracking-error { margin-top: 10px; }
+.tracking-error button { margin-top: 8px; }
+[role='alert'] { color: var(--danger); }
+.empty-state, .load-error { padding: 22px 0; color: var(--muted); }
 .load-error button { margin-top: 8px; }
-.activity-details > div { min-width: 0; }
-.activity-card h3, .activity-description { overflow-wrap: anywhere; }
-.activity-description { margin-top: 5px; font-size: 12px; color: #526176; white-space: pre-wrap; }
-
-.tracking-actions button { cursor: pointer; }
-.tracking-actions button:disabled { cursor: not-allowed; opacity: 0.6; }
-.tracking-select { display: grid; gap: 4px; margin: 12px 0 8px; font-size: 12px; color: #526176; }
-select { width: 100%; font: inherit; color: #111; background: white; border: 1px solid #ccc; border-radius: 5px; padding: 8px; }
-.manual-form { margin-top: 14px; }
+.recent-entries { margin-top: 18px; color: var(--muted); font-size: 12px; }
+.recent-entries summary { padding: 6px 0; }
+.recent-entries ul { list-style: none; padding: 0; margin: 8px 0 0; }
+.recent-entries li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.recent-entries li span { min-width: 0; overflow-wrap: anywhere; }
+.recent-entries small { display: block; font-size: 12px; }
+.recent-entries strong { font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-dialog { padding: 0; width: calc(100% - 32px); max-width: 440px; max-height: calc(100dvh - 32px); border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--surface); }
+.app-dialog::backdrop { background: #0007; }
+.dialog-content { padding: 24px; }
+.app-dialog h2 { font-size: 17px; }
+.activity-form { display: grid; gap: 14px; margin-top: 18px; }
+.activity-form label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
 .duration-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.tracking-error { margin-top: 10px; }
-.recent-entries { margin-top: 20px; }
-.recent-entries ul { padding: 0; list-style: none; }
-.recent-entries li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #eee; }
-.recent-entries small { display: block; color: #526176; font-size: 11px; }
-.recent-entries strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dialog-actions { justify-content: flex-end; margin-top: 8px; flex-wrap: wrap; }
+.delete-warning { margin: 16px 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  body { padding: 12px 8px; }
+  .dashboard { padding: 18px; }
+  .dashboard-header { flex-wrap: wrap; }
+  .tracking-actions { grid-template-columns: 1fr auto; }
+  .tracking-actions select { grid-column: 1 / -1; }
+  .tracking-heading { flex-wrap: wrap; }
+  input, select, textarea { font-size: 16px; }
+  .dialog-content { padding: 18px; }
+}
+@media (pointer: coarse) { button, summary { min-height: 44px; } }
