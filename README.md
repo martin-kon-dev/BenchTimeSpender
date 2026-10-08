@@ -24,7 +24,7 @@ BenchTimeSpender/
 └── frontend/       # Vue application and Vitest tests
 ```
 
-The backend contains a minimal FastAPI application and an API test. The frontend contains a Vue component that calls the backend and tests for its loading, success, and error states.
+The backend contains a minimal FastAPI application and an API test. The frontend shows a dashboard preview with example activities, progress bars, summary metrics, and a static timer. Tracking controls are disabled until their behavior is implemented. A live backend check and component tests cover loading, success, and error states.
 
 ## Current status
 

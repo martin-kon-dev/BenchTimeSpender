@@ -33,4 +33,4 @@ BenchTimeSpender is a personal learning project for an experienced C#/.NET devel
 
 ## Current milestone
 
-Milestone 1 establishes the project foundation and local communication between Vue and FastAPI. The first example will call a small API endpoint and display its JSON response in the frontend. Do not implement activities, time tracking, dashboards, progress history, or notes yet.
+Milestone 1 establishes the project foundation and local communication between Vue and FastAPI. The health endpoint and frontend connection example are implemented. The developer has also approved a dashboard preview using example activities and a static timer. Keep tracking controls disabled until their behavior is explicitly requested. Persistence, activity management, time tracking, calculated productivity metrics, progress history, and notes remain future work.

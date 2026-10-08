@@ -11,15 +11,15 @@ describe('backend connection', () => {
     vi.stubGlobal('fetch', fetchMock)
     const wrapper = mount(App)
 
-    await wrapper.get('button').trigger('click')
+    await wrapper.get('[data-testid=backend-check]').trigger('click')
     expect(fetchMock).toHaveBeenCalledWith('/api/health')
-    expect(wrapper.get('button').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid=backend-check]').attributes('disabled')).toBeDefined()
     expect(wrapper.text()).toContain('Checking…')
 
     complete(new Response(JSON.stringify({ status: 'ok' })))
     await flushPromises()
     expect(wrapper.text()).toContain('Backend status: ok')
-    expect(wrapper.get('button').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid=backend-check]').attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 
@@ -29,11 +29,11 @@ describe('backend connection', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'ok' }))))
     const wrapper = mount(App)
 
-    await wrapper.get('button').trigger('click')
+    await wrapper.get('[data-testid=backend-check]').trigger('click')
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toContain('HTTP 503')
 
-    await wrapper.get('button').trigger('click')
+    await wrapper.get('[data-testid=backend-check]').trigger('click')
     await flushPromises()
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Backend status: ok')
@@ -44,10 +44,10 @@ describe('backend connection', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Failed to fetch')))
     const wrapper = mount(App)
 
-    await wrapper.get('button').trigger('click')
+    await wrapper.get('[data-testid=backend-check]').trigger('click')
     await flushPromises()
     expect(wrapper.get('[role="alert"]').text()).toBe('Failed to fetch')
-    expect(wrapper.get('button').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid=backend-check]').attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 })
