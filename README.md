@@ -24,11 +24,11 @@ BenchTimeSpender/
 └── frontend/       # Vue application and Vitest tests
 ```
 
-The backend contains a minimal FastAPI application and an API test. The frontend shows a dashboard preview with example activities, progress bars, summary metrics, and a static timer. Tracking controls are disabled until their behavior is implemented. A live backend check and component tests cover loading, success, and error states.
+The backend stores activities in SQLite using SQLAlchemy. The Vue dashboard loads saved activities and provides a creation form, progress bars, and active/completed counts. Timer and manual-entry controls remain disabled. A live backend check is also available.
 
 ## Current status
 
-The Git repository is connected to GitHub as `origin`. The foundation includes a working health endpoint and a frontend connection example. No activity tracking features have been implemented.
+The Git repository is connected to GitHub as `origin`. The application supports activity listing and creation. Time tracking, activity editing, progress history, notes, and daily/weekly productivity calculations are upcoming work.
 
 ## Backend setup (PowerShell)
 
@@ -46,9 +46,24 @@ If your installation provides `python` instead of `py`, use `python -m venv .ven
 
 Using the environment's executable directly avoids needing to activate it or change PowerShell's execution policy. The editable install (`-e`) allows source changes to take effect without reinstalling the project; `[dev]` also installs the test dependencies declared in `pyproject.toml`.
 
-Open http://127.0.0.1:8000/api/health to see `{"status":"ok"}`, or http://127.0.0.1:8000/docs for the generated interactive API documentation. Stop the server with Ctrl+C.
+Open http://127.0.0.1:8000/api/health to see `{"status":"ok","message":"BenchTimeSpender API is ready."}`, or http://127.0.0.1:8000/docs for the generated interactive API documentation. Stop the server with Ctrl+C.
 
 `app.main:app` means "import the `app` object from the `app.main` Python module." Uvicorn hosts FastAPI, similar to Kestrel hosting an ASP.NET Core application. `--reload` restarts the development server when source files change.
+
+After dependency changes, stop the server, rerun the editable install command, then restart it.
+
+## Activities and persistence
+
+- `GET /api/activities` lists activities in creation order.
+- `POST /api/activities` creates an activity and returns HTTP 201 with its generated ID.
+- Title and category are required and trimmed, with limits of 200 and 100 characters. Description is optional and limited to 2,000 characters. Completion percentage must be an integer from 0 through 100 and defaults to 0. Invalid requests return HTTP 422.
+- The database starts empty and is created at `backend/benchtime.db` on server startup. This file is ignored by Git. Data survives refreshes and server restarts.
+- Use **New activity** in the dashboard, complete the form, and click **Save activity**. Refresh the page to confirm it reloads from SQLite.
+- Active means completion below 100%; completed means 100%. Weekly time is shown as unavailable until time tracking is implemented.
+
+`models.py` defines database mappings, similar to EF Core entities. `schemas.py` defines validated HTTP request/response models, similar to DTOs. A SQLAlchemy `Session` tracks changes and `commit()` writes them, similar to `DbContext.SaveChanges()`. FastAPI injects a session per request through `Depends`; `yield` lets the dependency close it afterward.
+
+`create_app()` accepts a database URL so tests use temporary databases instead of personal data. Table creation at startup is sufficient for this first schema; migrations will be introduced when existing tables need changes.
 
 ## Frontend setup (second PowerShell)
 
@@ -82,7 +97,7 @@ The tests mock HTTP requests to exercise the component independently of FastAPI.
 - `fetch` performs HTTP requests; `await` waits for the response and JSON body. Check `response.ok` because HTTP error responses do not automatically reject the promise.
 - `HealthResponse` describes the JSON shape for TypeScript tooling. Type annotations do not validate JSON at runtime.
 
-Once you have reviewed this working reference, a small learning exercise is to add a `message` string to the backend response, update the tests and TypeScript type, and display it in Vue. Agree on that exercise before beginning it.
+The connection example also displays the `message` returned by FastAPI. Its TypeScript response type and the backend and frontend tests describe the same response contract.
 
 ## Milestone 1 sequence
 
@@ -101,8 +116,8 @@ Vue ← JSON response      ← Vite development proxy ← FastAPI
 
 Vite serves the frontend during development and forwards `/api` requests to the backend. Vue then displays the returned data.
 
-Activity management, time tracking, completion percentages, dashboards, progress history, and notes belong to future milestones.
+Later milestones will add time tracking, activity editing, progress history, notes, and daily/weekly productivity calculations.
 
 ## Working agreement
 
-Changes should be small and reviewable, with relevant checks after each step. Boilerplate can be generated; learning-critical logic is implemented with guidance. Commits and pushes require explicit approval. See [AGENTS.md](AGENTS.md) for the full conventions.
+Changes should be small and reviewable, with relevant checks after each step. AI currently implements the agreed steps fully at the developer's request, while explaining unfamiliar concepts. Commits and pushes require explicit approval. See [AGENTS.md](AGENTS.md) for the full conventions.

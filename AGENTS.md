@@ -11,6 +11,7 @@ BenchTimeSpender is a personal learning project for an experienced C#/.NET devel
 - Explain unfamiliar syntax and framework conventions.
 - Make small, reviewable changes and avoid unnecessary abstractions.
 - Generate boilerplate, but leave learning-critical logic for the developer. Agree on a small exercise before leaving implementation work incomplete; clearly explain the expected behavior and how to verify it.
+- The developer has requested faster progress and asked AI to implement the current learning exercises. Implement the agreed steps fully while continuing to explain important concepts; do not pause for exercises unless requested.
 - Ask the developer to review proposed structure before significant structural changes.
 - Do not commit or push without explicit developer approval.
 - Do not add features beyond the current agreed milestone.
@@ -33,4 +34,4 @@ BenchTimeSpender is a personal learning project for an experienced C#/.NET devel
 
 ## Current milestone
 
-Milestone 1 establishes the project foundation and local communication between Vue and FastAPI. The health endpoint and frontend connection example are implemented. The developer has also approved a dashboard preview using example activities and a static timer. Keep tracking controls disabled until their behavior is explicitly requested. Persistence, activity management, time tracking, calculated productivity metrics, progress history, and notes remain future work.
+The project foundation and health endpoint are implemented. The current step adds SQLite persistence with SQLAlchemy, activity listing and creation, and a dashboard using saved activities. Active and completed counts are derived from completion percentages. Keep timer and manual-entry controls disabled until requested. Time tracking, editing activities, progress history, notes, and daily/weekly productivity calculations remain future work.
