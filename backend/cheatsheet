@@ -1,0 +1,7 @@
+ - start FE:
+cd C:\Users\martin.kondev\source\repos\BenchTimeSpender\frontend
+npm run dev
+
+ - start BE:
+cd C:\Users\martin.kondev\source\repos\BenchTimeSpender\backend
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
