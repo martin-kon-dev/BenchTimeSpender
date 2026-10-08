@@ -24,11 +24,11 @@ BenchTimeSpender/
 └── frontend/       # Vue application and Vitest tests
 ```
 
-The backend stores activities in SQLite using SQLAlchemy. The Vue dashboard loads saved activities and provides a creation form, progress bars, and active/completed counts. Timer and manual-entry controls remain disabled. A live backend check is also available.
+The backend stores activities, time entries, and the running timer in SQLite using SQLAlchemy. The Vue dashboard provides activity creation, a start/stop timer, manual time entry, progress bars, activity time totals, and a weekly recorded-time summary. A live backend check is also available.
 
 ## Current status
 
-The Git repository is connected to GitHub as `origin`. The application supports activity listing and creation. Time tracking, activity editing, progress history, notes, and daily/weekly productivity calculations are upcoming work.
+The Git repository is connected to GitHub as `origin`. The application supports activity listing/creation and time tracking. Activity editing, progress history, notes, and richer daily/weekly productivity dashboards are upcoming work.
 
 ## Backend setup (PowerShell)
 
@@ -59,11 +59,30 @@ After dependency changes, stop the server, rerun the editable install command, t
 - Title and category are required and trimmed, with limits of 200 and 100 characters. Description is optional and limited to 2,000 characters. Completion percentage must be an integer from 0 through 100 and defaults to 0. Invalid requests return HTTP 422.
 - The database starts empty and is created at `backend/benchtime.db` on server startup. This file is ignored by Git. Data survives refreshes and server restarts.
 - Use **New activity** in the dashboard, complete the form, and click **Save activity**. Refresh the page to confirm it reloads from SQLite.
-- Active means completion below 100%; completed means 100%. Weekly time is shown as unavailable until time tracking is implemented.
+- Active means completion below 100%; completed means 100%. Completion percentage is independent of time recorded.
 
 `models.py` defines database mappings, similar to EF Core entities. `schemas.py` defines validated HTTP request/response models, similar to DTOs. A SQLAlchemy `Session` tracks changes and `commit()` writes them, similar to `DbContext.SaveChanges()`. FastAPI injects a session per request through `Depends`; `yield` lets the dependency close it afterward.
 
 `create_app()` accepts a database URL so tests use temporary databases instead of personal data. Table creation at startup is sufficient for this first schema; migrations will be introduced when existing tables need changes.
+
+## Timer and manual time entries
+
+1. Choose an activity under **Time tracking** and click **Build timer**.
+2. The timer continues across page refreshes and server restarts, using its persisted server start time. Only one timer can run at a time across browser tabs.
+3. Click **Stop & save** to record its duration. A stop lasting less than a second records one second. The elapsed display is based on timestamps rather than counting interval ticks.
+4. For past work, click **Manual entry**, select an activity, enter a local start date/time and hours/minutes, then click **Save time entry**. The UI supports durations from one minute to 24 hours; the API accepts one second to 24 hours. Entries must finish in the past.
+
+The browser converts manual start times to UTC. The database stores UTC epoch seconds; the UI displays dates in the browser's local timezone. Recent entries show the last five records. Activity totals include all saved entries. The weekly total counts the part of each saved entry between local Monday midnight and now; it excludes a timer that is still running. Overlapping entries are allowed and summed independently.
+
+API routes:
+
+- `GET /api/timer`: current timer or `null`.
+- `POST /api/timer/start`: takes `activity_id`; returns HTTP 201, or HTTP 409 if a timer already exists.
+- `POST /api/timer/{id}/stop`: saves a time entry and clears the matching timer atomically. Repeated stops return HTTP 404 and do not duplicate time.
+- `GET /api/time-entries`: recorded time, newest start first.
+- `POST /api/time-entries`: takes `activity_id`, a timezone-aware `started_at`, and integer `duration_seconds`; returns HTTP 201.
+
+Restart the backend after updating the code; startup creates the new tables without changing existing activities. No new dependencies are required for this step.
 
 ## Frontend setup (second PowerShell)
 
@@ -116,7 +135,7 @@ Vue ← JSON response      ← Vite development proxy ← FastAPI
 
 Vite serves the frontend during development and forwards `/api` requests to the backend. Vue then displays the returned data.
 
-Later milestones will add time tracking, activity editing, progress history, notes, and daily/weekly productivity calculations.
+Later milestones will add activity editing, progress history, notes, and richer daily/weekly productivity dashboards.
 
 ## Working agreement
 

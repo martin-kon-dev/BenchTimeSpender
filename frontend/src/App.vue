@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import TimeTracking from './components/TimeTracking.vue'
+import { formatDuration, weeklySeconds, type TimeEntry } from './time'
 
 type HealthResponse = { status: string; message: string }
 
@@ -24,6 +26,12 @@ const completion = ref(0)
 const activeCount = computed(() => activities.value.filter(a => a.completion_percentage < 100).length)
 const completedCount = computed(() => activities.value.filter(a => a.completion_percentage === 100).length)
 const colors = ['#2da44e', '#527cff', '#a855f7']
+const entries = ref<TimeEntry[] | null>(null)
+const weeklyTime = computed(() => entries.value === null ? '—' : `${(weeklySeconds(entries.value) / 3600).toFixed(1)}h`)
+function activityTime(id: number) {
+  return entries.value === null ? '—' : formatDuration(entries.value.filter(entry => entry.activity_id === id)
+    .reduce((total, entry) => total + entry.duration_seconds, 0))
+}
 
 async function loadActivities() {
   activitiesLoading.value = true
@@ -111,7 +119,7 @@ async function checkBackend() {
     <p class="subtitle">Your personal bench productivity dashboard</p>
 
     <dl class="metrics" aria-label="Productivity summary">
-      <div><dt>This week</dt><dd title="Time tracking is coming next">—</dd></div>
+      <div><dt>This week</dt><dd title="Saved time since Monday in your local timezone">{{ weeklyTime }}</dd></div>
       <div><dt>Active</dt><dd>{{ activitiesLoading || activitiesError ? '—' : activeCount }}</dd></div>
       <div><dt>Completed</dt><dd class="completed">{{ activitiesLoading || activitiesError ? '—' : completedCount }}</dd></div>
     </dl>
@@ -141,6 +149,7 @@ async function checkBackend() {
             <div>
               <h3>{{ activity.title }}</h3>
               <p class="muted">{{ activity.category }}</p>
+              <p class="muted">{{ activityTime(activity.id) }} recorded</p>
               <p v-if="activity.description" class="activity-description">{{ activity.description }}</p>
             </div>
             <span class="percentage">{{ activity.completion_percentage }}%</span>
@@ -153,32 +162,10 @@ async function checkBackend() {
       </ul>
     </section>
 
-    <section class="tracking" aria-labelledby="tracking-heading">
-      <div class="tracking-heading">
-        <div>
-          <h2 id="tracking-heading">Time tracking</h2>
-          <p class="muted">Timer coming next</p>
-        </div>
-        <div class="timer" aria-label="Timer not started">
-          <svg class="icon timer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <circle cx="12" cy="14" r="7" /><path d="M9 3h6M12 7V5m0 6v4" />
-          </svg>
-          <span>00:00:00</span>
-        </div>
-      </div>
-      <div class="tracking-actions">
-        <button class="timer-button" disabled title="Timer functionality is coming in a later milestone">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" /><path d="m10 8 6 4-6 4Z" />
-          </svg>
-          Build timer
-        </button>
-        <button class="manual-button" disabled title="Manual entries are coming in a later milestone">Manual entry</button>
-      </div>
-    </section>
+    <TimeTracking :activities="activities" @entries-changed="entries = $event" />
 
     <footer>
-      <p class="muted">Activities are saved locally. Time tracking is coming next.</p>
+      <p class="muted">Activities and time entries are saved locally. Running timers resume after refresh.</p>
       <div class="backend-check">
         <button class="connection-button" data-testid="backend-check" :disabled="loading" @click="checkBackend">
           {{ loading ? 'Checking…' : 'Check backend' }}

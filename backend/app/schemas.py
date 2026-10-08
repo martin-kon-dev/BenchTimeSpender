@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
 
 class ActivityCreate(BaseModel):
@@ -14,3 +14,26 @@ class ActivityRead(ActivityCreate):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+
+
+class TimerStart(BaseModel):
+    activity_id: int = Field(gt=0, strict=True)
+
+
+class TimerRead(TimerStart):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    started_at: int
+
+
+class ManualEntryCreate(TimerStart):
+    started_at: AwareDatetime
+    duration_seconds: int = Field(ge=1, le=86400, strict=True)
+
+
+class TimeEntryRead(TimerStart):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    started_at: int
+    duration_seconds: int
+    source: str

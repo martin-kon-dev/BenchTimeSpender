@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from .database import Base, get_session
 from .models import Activity
 from .schemas import ActivityCreate, ActivityRead
+from .tracking import router as tracking_router
 
 
 def create_app(database_url: str | None = None) -> FastAPI:
@@ -28,6 +29,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
 
     application = FastAPI(title="BenchTimeSpender", lifespan=lifespan)
     application.state.engine = engine
+    application.include_router(tracking_router)
 
     @application.get("/api/health")
     def health() -> dict[str, str]:
