@@ -1,196 +1,110 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { json, matchesActivity, request, type Activity, type Category } from './api'
+import { formatDuration, formatSavedTime, timeTotals, weeklySeconds } from './time'
+import { useTracker } from './useTracker'
+import ActivityCard from './components/ActivityCard.vue'
 import AppDialog from './components/AppDialog.vue'
-import TimeTracking from './components/TimeTracking.vue'
+import CategoryDialog from './components/CategoryDialog.vue'
 import ThemeToggle from './components/ThemeToggle.vue'
-import { formatDuration, weeklySeconds, type TimeEntry } from './time'
 
-type Activity = {
-  id: number
-  title: string
-  category: string
-  description: string
-  completion_percentage: number
-}
-
-const activities = ref<Activity[]>([])
-const activitiesLoading = ref(true)
-const activitiesError = ref<string | null>(null)
-const saving = ref(false)
-const saveError = ref<string | null>(null)
-const showForm = ref(false)
-const title = ref('')
-const category = ref('Learning')
-const description = ref('')
-const completion = ref(0)
-const entries = ref<TimeEntry[] | null>(null)
-const tracking = ref<InstanceType<typeof TimeTracking> | null>(null)
-const runningActivity = ref<number | null>(null)
-const deleting = ref(false)
-const deleteTarget = ref<Activity | null>(null)
-const deleteError = ref<string | null>(null)
-const notice = ref('')
+const activities = ref<Activity[]>([]), categories = ref<Category[]>([]), loading = ref(true), error = ref('')
+const search = ref(''), category = ref('all'), completed = ref(false), expanded = ref<number | null>(null)
+const tracker = useTracker()
+const showCategories = ref(false), showCreate = ref(false), saving = ref(false), saveError = ref('')
+const title = ref(''), description = ref(''), newCategory = ref<number | null>(null), completion = ref(0)
+const createDialog = ref<InstanceType<typeof AppDialog> | null>(null)
+const deleteTarget = ref<Activity | null>(null), deleting = ref(false), deleteError = ref(''), notice = ref('')
+const switchTarget = ref<Activity | null>(null)
+const cards = ref<Record<number, InstanceType<typeof ActivityCard>>>({})
 const activeCount = computed(() => activities.value.filter(a => a.completion_percentage < 100).length)
-const completedCount = computed(() => activities.value.filter(a => a.completion_percentage === 100).length)
-const weeklyTime = computed(() => entries.value === null ? '—' : `${(weeklySeconds(entries.value) / 3600).toFixed(1)}h`)
-function activityTime(id: number) {
-  return entries.value === null ? '—' : formatDuration(entries.value.filter(entry => entry.activity_id === id)
-    .reduce((total, entry) => total + entry.duration_seconds, 0))
-}
-
-async function loadActivities() {
-  activitiesLoading.value = true
-  activitiesError.value = null
+const completedCount = computed(() => activities.value.length - activeCount.value)
+const matches = (a: Activity) => matchesActivity(a, search.value, category.value, completed.value)
+const visibleCount = computed(() => activities.value.filter(matches).length)
+const runningActivity = computed(() => activities.value.find(a => a.id === tracker.state.timer?.activity_id))
+const elapsed = computed(() => tracker.state.timer ? Math.max(0, Math.floor(tracker.state.now / 1000) - tracker.state.timer.started_at) : 0)
+// "Saved this week" retains its saved-only definition; card totals include live elapsed time.
+const week = computed(() => tracker.state.ready ? formatSavedTime(weeklySeconds(tracker.state.entries, new Date(tracker.state.now))) : '—')
+const liveWeek = computed(() => timeTotals(tracker.state.entries, tracker.state.timer, new Date(tracker.state.now)).week)
+async function load() {
+  error.value = ''
   try {
-    const response = await fetch('/api/activities')
-    if (!response.ok) throw new Error(`Could not load activities (HTTP ${response.status}).`)
-    activities.value = await response.json()
-  } catch (cause) {
-    activitiesError.value = cause instanceof Error ? cause.message : 'Could not load activities.'
-  } finally { activitiesLoading.value = false }
+    const [nextActivities, nextCategories] = await Promise.all([request<Activity[]>('/api/activities'), request<Category[]>('/api/categories')])
+    activities.value = nextActivities; categories.value = nextCategories
+    if (category.value !== 'all' && category.value !== 'uncategorized' && !nextCategories.some(c => c.id === Number(category.value))) category.value = 'all'
+  } catch (cause) { error.value = (cause as Error).message }
+  finally { loading.value = false }
 }
-
-async function createActivity() {
-  if (!title.value.trim() || !category.value.trim()) {
-    saveError.value = 'Title and category are required.'
-    return
-  }
-  saving.value = true
-  saveError.value = null
+function reset() { search.value = ''; category.value = 'all' }
+function revealTimer() { reset(); completed.value = false; expanded.value = runningActivity.value?.id ?? null }
+function start(activity: Activity) { if (tracker.state.timer) switchTarget.value = activity; else void tracker.start(activity.id) }
+async function switchTimer() {
+  const target = switchTarget.value
+  if (target && await tracker.stop()) { switchTarget.value = null; await tracker.start(target.id) }
+}
+async function create() {
+  if (saving.value) return
+  saving.value = true; saveError.value = ''
   try {
-    const response = await fetch('/api/activities', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title.value.trim(), category: category.value.trim(),
-        description: description.value.trim(), completion_percentage: completion.value }),
-    })
-    if (!response.ok) throw new Error(`Could not save activity (HTTP ${response.status}). Check the fields and retry.`)
-    activities.value.push(await response.json())
-    title.value = ''
-    description.value = ''
-    completion.value = 0
-    showForm.value = false
-  } catch (cause) {
-    saveError.value = cause instanceof Error ? cause.message : 'Could not save activity.'
-  } finally { saving.value = false }
+    const activity = await request<Activity>('/api/activities', json('POST', { title: title.value.trim(), description: description.value.trim(), category_id: newCategory.value, completion_percentage: completion.value }))
+    showCreate.value = false; title.value = ''; description.value = ''; completion.value = 0; newCategory.value = null
+    reset(); completed.value = activity.completion_percentage === 100; expanded.value = activity.id; await load()
+  } catch (cause) { saveError.value = (cause as Error).message }
+  finally { saving.value = false }
 }
-
-function confirmDelete(activity: Activity) {
-  deleteError.value = null
-  deleteTarget.value = activity
-  notice.value = ''
-}
-
-async function deleteActivity() {
-  if (!deleteTarget.value || deleting.value) return
-  const activity = deleteTarget.value
-  deleting.value = true
-  deleteError.value = null
+async function remove() {
+  const target = deleteTarget.value
+  if (!target || deleting.value) return
+  deleting.value = true; deleteError.value = ''
   try {
-    const response = await fetch(`/api/activities/${activity.id}`, { method: 'DELETE' })
-    // Another tab may already have deleted it; reconcile the local list in either case.
-    if (!response.ok && response.status !== 404) {
-      const body = await response.json().catch(() => null)
-      throw new Error(typeof body?.detail === 'string' ? body.detail : `Could not delete activity (HTTP ${response.status}).`)
-    }
-    activities.value = activities.value.filter(item => item.id !== activity.id)
-    if (entries.value) entries.value = entries.value.filter(entry => entry.activity_id !== activity.id)
-    deleteTarget.value = null
-    notice.value = `Deleted “${activity.title}” and its recorded time.`
-    await tracking.value?.reload()
-  } catch (cause) {
-    deleteError.value = cause instanceof Error ? cause.message : 'Could not delete activity.'
-  } finally { deleting.value = false }
+    await request(`/api/activities/${target.id}`, { method: 'DELETE' })
+    deleteTarget.value = null; notice.value = `Deleted “${target.title}” and its recorded time.`
+    await Promise.all([load(), tracker.reload()])
+  } catch (cause) { deleteError.value = (cause as Error).message }
+  finally { deleting.value = false }
 }
-
-onMounted(loadActivities)
+onMounted(load)
 </script>
 
 <template>
+  <header class="site-header"><div class="header-inner"><div class="brand"><h1>BenchTime</h1><p class="muted">Your time, at a glance</p></div><ThemeToggle /></div></header>
   <main class="dashboard">
-    <header class="dashboard-header">
-      <div>
-        <div class="brand">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-            <circle cx="12" cy="12" r="9" /><path d="M12 7v5h4" />
-          </svg>
-          <h1>BenchTime</h1>
-        </div>
-        <p class="subtitle">Make your bench time count.</p>
+    <div class="page-heading"><div><h2>Activities</h2><p class="muted">Make room for what matters.</p></div><button class="primary" :disabled="loading || !!error" @click="showCreate = true; saveError = ''"><span aria-hidden="true">＋</span> New activity</button></div>
+    <dl class="metrics" aria-label="Productivity summary"><div><span class="metric-icon violet" aria-hidden="true">◷</span><div><dt>Saved this week</dt><dd>{{ week }}</dd></div></div><div><span class="metric-icon green" aria-hidden="true">▷</span><div><dt>Active</dt><dd>{{ loading || error ? '—' : activeCount }}</dd></div></div><div><span class="metric-icon blue" aria-hidden="true">✓</span><div><dt>Completed</dt><dd>{{ loading || error ? '—' : completedCount }}</dd></div></div></dl>
+    <div class="toolbar">
+      <label class="search-field"><span class="sr-only">Search activities</span><input v-model="search" type="search" placeholder="Search activities" /></label>
+      <label class="category-filter"><span class="sr-only">Filter by category</span>
+        <select v-model="category" aria-label="Filter by category">
+          <option value="all">All categories</option>
+          <option v-for="c in categories" :key="c.id" :value="String(c.id)" :style="{ '--category-color': c.color }">{{ c.name }}</option>
+          <option value="uncategorized">Uncategorized</option>
+        </select>
+      </label>
+      <button :disabled="loading || !!error" @click="showCategories = true">Manage categories</button>
+    </div>
+    <nav class="view-tabs" aria-label="Activity status"><button :class="{ selected: !completed }" :aria-pressed="!completed" @click="completed = false">Active <span>{{ activeCount }}</span></button><button :class="{ selected: completed }" :aria-pressed="completed" @click="completed = true">Completed <span>{{ completedCount }}</span></button><button v-if="search || category !== 'all'" class="reset-button" @click="reset">Reset filters</button></nav>
+    <div v-if="runningActivity" class="running-banner"><div><span class="live-dot" aria-hidden="true"></span><strong>{{ runningActivity.title }}</strong><span class="muted">{{ formatDuration(elapsed) }}</span></div><div class="banner-actions"><button @click="revealTimer">Show timer</button><button :disabled="tracker.state.busy || !tracker.state.ready" @click="tracker.stop">Stop & save</button></div></div>
+    <p v-if="tracker.state.timer" class="sr-only">This week including the running session: {{ formatSavedTime(liveWeek) }}. Activity totals include running time.</p>
+    <div v-if="tracker.state.error" class="error-state"><p role="alert">{{ tracker.state.error }}</p><button :disabled="tracker.state.busy" @click="tracker.reload">Reload tracking</button></div>
+    <p v-if="tracker.state.notice" class="notice" role="status">{{ tracker.state.notice }}</p>
+    <p v-if="loading" class="empty-state" role="status">Loading activities…</p>
+    <div v-else-if="error" class="empty-state"><p role="alert">{{ error }}</p><button @click="load">Retry loading</button></div>
+    <section v-show="!loading && !error" aria-label="Activities">
+      <div v-if="!loading && !error && !activities.length" class="empty-state">
+        <h3>Your next focus starts here</h3><p>Create your first activity, then start a timer or add time manually.</p>
       </div>
-      <div class="header-actions">
-      <ThemeToggle />
-      <button class="connection-button" :disabled="activitiesLoading || !!activitiesError || saving || deleting"
-        @click="saveError = null; showForm = true">New activity</button>
+      <div v-else-if="!loading && !error && !visibleCount" class="empty-state">
+        <h3>{{ search || category !== 'all' ? 'No matching activities' : completed ? 'No completed activities yet' : 'No active activities' }}</h3>
+        <p>{{ search || category !== 'all' ? 'Try another search or category.' : 'Activities will appear here as their status changes.' }}</p>
+        <button v-if="search || category !== 'all'" @click="reset">Reset filters</button>
       </div>
-    </header>
-
-    <dl class="metrics" aria-label="Productivity summary">
-      <div><dt>This week</dt><dd title="Saved time since Monday in your local timezone">{{ weeklyTime }}</dd></div>
-      <div><dt>Active</dt><dd>{{ activitiesLoading || activitiesError ? '—' : activeCount }}</dd></div>
-      <div><dt>Completed</dt><dd>{{ activitiesLoading || activitiesError ? '—' : completedCount }}</dd></div>
-    </dl>
-
-    <TimeTracking ref="tracking" :activities="activities" @entries-changed="entries = $event"
-      @timer-changed="runningActivity = $event" />
-
-    <section aria-labelledby="activities-heading">
-      <div class="section-heading"><h2 id="activities-heading">Ongoing activities</h2></div>
-      <p v-if="activitiesLoading" class="muted" role="status">Loading activities…</p>
-      <div v-else-if="activitiesError" class="load-error">
-        <p role="alert">{{ activitiesError }}</p>
-        <button class="connection-button" @click="loadActivities">Retry loading</button>
-      </div>
-      <p v-else-if="!activities.length" class="empty-state">No activities yet. Create your first activity to get started.</p>
-      <ul v-else class="activity-list">
-        <li v-for="activity in activities" :key="activity.id" class="activity-card">
-          <div class="activity-details">
-            <div class="activity-copy">
-              <h3>{{ activity.title }}</h3>
-              <p class="muted">{{ activity.category }} · {{ activityTime(activity.id) }} recorded</p>
-            </div>
-            <div class="activity-actions">
-              <span class="percentage">{{ activity.completion_percentage }}%</span>
-              <button class="delete-button" :aria-label="'Delete activity: ' + activity.title"
-                :disabled="deleting || runningActivity === activity.id"
-                :title="runningActivity === activity.id ? 'Stop and save the timer before deleting this activity.' : undefined"
-                @click="confirmDelete(activity)">Delete</button>
-            </div>
-          </div>
-          <div class="progress-track" role="progressbar" :aria-label="activity.title + ' completion'"
-            :aria-valuenow="activity.completion_percentage" :aria-valuemin="0" :aria-valuemax="100">
-            <div class="progress-fill" :style="{ width: activity.completion_percentage + '%' }"></div>
-          </div>
-          <details v-if="activity.description" class="activity-description"><summary>Notes</summary><p>{{ activity.description }}</p></details>
-        </li>
-      </ul>
-      <p v-if="notice" class="muted" role="status">{{ notice }}</p>
+      <ul class="activity-list"><ActivityCard v-for="a in activities" v-show="matches(a)" :key="a.id" :ref="el => { if (el) cards[a.id] = el as InstanceType<typeof ActivityCard> }" :activity="a" :categories="categories" :expanded="expanded === a.id" :tracker="tracker" @expand="expanded = expanded === a.id ? null : a.id" @start="start(a)" @changed="load" @delete="deleteTarget = a; deleteError = ''" /></ul>
     </section>
-
-    <details v-if="entries?.length" class="recent-entries">
-      <summary>Recent time entries</summary>
-      <ul><li v-for="entry in entries.slice(0, 5)" :key="entry.id">
-        <span>{{ activities.find(activity => activity.id === entry.activity_id)?.title ?? 'Activity unavailable' }}
-          <small>{{ new Date(entry.started_at * 1000).toLocaleString() }} · {{ entry.source }}</small></span>
-        <strong>{{ formatDuration(entry.duration_seconds) }}</strong>
-      </li></ul>
-    </details>
-
-    <AppDialog v-if="showForm" title="New activity" :busy="saving" @close="showForm = false">
-      <form class="activity-form" @submit.prevent="createActivity">
-        <label>Title<input v-model="title" name="title" required maxlength="200" :disabled="saving" /></label>
-        <label>Category<input v-model="category" name="category" required maxlength="100" :disabled="saving" /></label>
-        <label>Description<textarea v-model="description" name="description" maxlength="2000" rows="2" :disabled="saving"></textarea></label>
-        <label>Completion (%)<input v-model.number="completion" name="completion" type="number" min="0" max="100" step="1" required :disabled="saving" /></label>
-        <p v-if="saveError" role="alert">{{ saveError }}</p>
-        <div class="dialog-actions"><button class="connection-button" type="button" :disabled="saving" @click="showForm = false">Cancel</button>
-          <button class="save-button" type="submit" :disabled="saving">{{ saving ? 'Saving…' : 'Save activity' }}</button></div>
-      </form>
-    </AppDialog>
-    <AppDialog v-if="deleteTarget" title="Delete activity?" :busy="deleting" @close="deleteTarget = null">
-      <p class="delete-warning">Delete “{{ deleteTarget.title }}” and all its recorded time? This cannot be undone.</p>
-      <p v-if="deleteError" role="alert">{{ deleteError }}</p>
-      <div class="dialog-actions"><button class="connection-button" :disabled="deleting" @click="deleteTarget = null">Cancel</button>
-        <button class="delete-button" data-testid="confirm-delete" :disabled="deleting" @click="deleteActivity">{{ deleting ? 'Deleting…' : 'Delete activity' }}</button></div>
-    </AppDialog>
+    <p v-if="notice" class="notice" role="status">{{ notice }}</p>
+    <p class="page-footnote">Activity totals include running time. Weeks start on Monday in your local timezone.</p>
+    <CategoryDialog v-if="showCategories" :categories="categories" @close="showCategories = false" @changed="load" />
+    <AppDialog v-if="showCreate" ref="createDialog" title="New activity" :busy="saving" :dirty="!!title || !!description || newCategory !== null || completion !== 0" @close="showCreate = false; title = ''; description = ''; newCategory = null; completion = 0"><form class="activity-form" @submit.prevent="create"><label>Title<input v-model="title" required maxlength="200" :disabled="saving" /></label><label>Category<select v-model="newCategory" :disabled="saving"><option :value="null">Uncategorized</option><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option></select></label><label>Description <span class="muted">(optional)</span><textarea v-model="description" maxlength="2000" rows="3" :disabled="saving"></textarea></label><label>Completion (%)<input v-model.number="completion" type="number" min="0" max="100" step="1" required :disabled="saving" /></label><p v-if="saveError" role="alert">{{ saveError }}</p><div class="dialog-actions"><button type="button" :disabled="saving" @click="createDialog?.close()">Cancel</button><button class="primary" :disabled="saving">{{ saving ? 'Saving…' : 'Create activity' }}</button></div></form></AppDialog>
+    <AppDialog v-if="deleteTarget" title="Delete activity?" :busy="deleting" @close="deleteTarget = null"><p class="delete-warning">Delete “{{ deleteTarget.title }}” and all its recorded time? This cannot be undone.</p><p v-if="cards[deleteTarget.id]?.hasDraft()" class="delete-warning">This also discards its unsaved manual entry or activity edits.</p><p v-if="deleteError" role="alert">{{ deleteError }}</p><div class="dialog-actions"><button :disabled="deleting" @click="deleteTarget = null">Cancel</button><button class="delete-button" data-testid="confirm-delete" :disabled="deleting" @click="remove">Delete activity</button></div></AppDialog>
+    <AppDialog v-if="switchTarget" title="Switch timer?" :busy="tracker.state.busy" @close="switchTarget = null"><p class="delete-warning">Stop and save the session for “{{ runningActivity?.title }}” before starting “{{ switchTarget.title }}”?</p><p v-if="tracker.state.error" role="alert">{{ tracker.state.error }}</p><div class="dialog-actions"><button :disabled="tracker.state.busy" @click="switchTarget = null">Keep current timer</button><button class="primary" :disabled="tracker.state.busy || !tracker.state.ready" @click="switchTimer">Save & switch</button></div></AppDialog>
   </main>
 </template>

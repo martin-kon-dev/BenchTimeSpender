@@ -42,6 +42,50 @@ function mockServer(initialTimer: typeof running | null = null) {
 }
 
 describe('time tracking', () => {
+  it('prefills a past 30-minute session and preserves a cancelled draft', async () => {
+    mockServer()
+    const wrapper = mount(TimeTracking, { props: { activities: [...activities, { id: 2, title: 'Portfolio' }] } })
+    await flushPromises()
+    await wrapper.get('.manual-button').trigger('click')
+    const defaultStart = (wrapper.get('input[name="started_at"]').element as HTMLInputElement).value
+    expect(new Date(defaultStart).getTime()).toBe((startSeconds - 1800) * 1000)
+    await wrapper.get('dialog select').setValue(2)
+    await wrapper.get('input[name="started_at"]').setValue('2026-01-04T10:00')
+    await wrapper.get('input[name="hours"]').setValue(1)
+    await wrapper.get('dialog .connection-button').trigger('click')
+    await wrapper.get('.manual-button').trigger('click')
+    expect((wrapper.get('dialog select').element as HTMLSelectElement).value).toBe('2')
+    expect((wrapper.get('input[name="started_at"]').element as HTMLInputElement).value).toBe('2026-01-04T10:00')
+    expect((wrapper.get('input[name="hours"]').element as HTMLInputElement).value).toBe('1')
+    wrapper.unmount()
+  })
+
+  it('focuses the invalid manual-entry field and clears errors after correction', async () => {
+    const fetchMock = mockServer()
+    const wrapper = mount(TimeTracking, { props: { activities }, attachTo: document.body })
+    await flushPromises()
+    await wrapper.get('.manual-button').trigger('click')
+    await wrapper.get('input[name="started_at"]').setValue('2099-01-01T10:00')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('input[name="started_at"]').element)
+    expect(wrapper.get('input[name="started_at"]').attributes('aria-describedby')).toContain('manual-start-error')
+    await wrapper.get('input[name="started_at"]').setValue('2026-01-04T10:00')
+    await wrapper.get('input[name="minutes"]').setValue(60)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(document.activeElement).toBe(wrapper.get('input[name="minutes"]').element)
+    expect(wrapper.get('#manual-duration-error').text()).toContain('0 to 59')
+    expect(wrapper.find('#manual-start-error').exists()).toBe(false)
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
+    await wrapper.get('input[name="minutes"]').setValue(30)
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('form').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Saved 30 min to Learn Python.')
+    wrapper.unmount()
+  })
+
   it('selects the first activity created without requiring a refresh', async () => {
     mockServer()
     const addedActivities = reactive<{ id: number; title: string }[]>([])
@@ -68,7 +112,7 @@ describe('time tracking', () => {
     expect(wrapper.get('.timer').text()).toBe('00:01:06')
     await wrapper.get('[data-testid="timer-toggle"]').trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('Timer stopped. Time saved.')
+    expect(wrapper.text()).toContain('Saved 1 min to Learn Python.')
     expect(wrapper.emitted('entriesChanged')?.at(-1)?.[0]).toEqual([expect.objectContaining({ duration_seconds: 65 })])
     wrapper.unmount()
   })
@@ -97,7 +141,7 @@ describe('time tracking', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/time-entries', expect.objectContaining({
       body: JSON.stringify({ activity_id: 1, started_at: new Date('2026-01-04T10:00').toISOString(), duration_seconds: 4500 }),
     }))
-    expect(wrapper.text()).toContain('Manual entry saved.')
+    expect(wrapper.text()).toContain('Saved 1h 15m to Learn Python.')
     expect(wrapper.emitted('entriesChanged')?.at(-1)?.[0]).toEqual([expect.objectContaining({ duration_seconds: 4500 })])
     expect(wrapper.find('form').exists()).toBe(false)
     wrapper.unmount()
@@ -111,7 +155,8 @@ describe('time tracking', () => {
     await wrapper.get('input[name="started_at"]').setValue('2099-01-01T10:00')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(wrapper.get('[role="alert"]').text()).toContain('finish in the past')
+    expect(wrapper.get('[role="alert"]').text()).toContain('finish in the future')
+    expect(wrapper.get('input[name="started_at"]').attributes('aria-invalid')).toBe('true')
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
     expect(wrapper.find('form').exists()).toBe(true)
     await wrapper.get('dialog .connection-button').trigger('click')

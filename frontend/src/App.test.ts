@@ -1,80 +1,68 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
-
-const activity = { id: 1, title: 'Python', category: 'Learning', description: '', completion_percentage: 50 }
-const entry = { id: 1, activity_id: 1, started_at: Math.floor(Date.now() / 1000) - 4000, duration_seconds: 3600, source: 'manual' }
+import { server } from './test-server'
 const wrappers: ReturnType<typeof mount>[] = []
-afterEach(() => { wrappers.forEach(wrapper => wrapper.unmount()); wrappers.length = 0; vi.unstubAllGlobals() })
-
-function mockServer(deleteStatus = 204, running = false) {
-  let deleted = false
-  const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
-    if (url === '/api/activities') return new Response(JSON.stringify(deleted ? [] : [activity]))
-    if (url === '/api/timer') return new Response(JSON.stringify(running ? { id: 'timer-1', activity_id: 1, started_at: entry.started_at } : null))
-    if (url === '/api/time-entries') return new Response(JSON.stringify(deleted ? [] : [entry]))
-    if (url === '/api/activities/1' && options?.method === 'DELETE') {
-      if (deleteStatus === 204) { deleted = true; return new Response(null, { status: 204 }) }
-      return new Response(JSON.stringify({ detail: 'Stop and save the timer before deleting this activity.' }), { status: deleteStatus })
-    }
-    throw Error(`Unexpected request: ${url}`)
+afterEach(() => { wrappers.forEach(w => w.unmount()); wrappers.length = 0; vi.useRealTimers(); vi.unstubAllGlobals() })
+async function render() { const w = mount(App); wrappers.push(w); await flushPromises(); return w }
+describe('redesigned dashboard', () => {
+  it('shows scoped totals instead of history and keeps global counts while filtering', async () => {
+    server(); const w = await render()
+    expect(w.find('dialog').exists()).toBe(false)
+    expect(w.find('.recent-entries').exists()).toBe(false)
+    expect(w.findAll('.metrics dd').map(e => e.text())).toEqual(['1h', '1', '1'])
+    expect(w.findAll('.card-totals dt').slice(0,3).map(e => e.text())).toEqual(['Today', 'This week', 'Overall'])
+    await w.get('input[type="search"]').setValue('  FASTapi ')
+    expect(w.findAll('.activity-card').filter(c => c.isVisible())).toHaveLength(1)
+    await w.get('select[aria-label="Filter by category"]').setValue('uncategorized')
+    expect(w.text()).toContain('No matching activities')
+    expect(w.findAll('.metrics dd').map(e => e.text())).toEqual(['1h', '1', '1'])
   })
-  vi.stubGlobal('fetch', fetchMock)
-  return fetchMock
-}
-
-async function render() {
-  const wrapper = mount(App)
-  wrappers.push(wrapper)
-  await flushPromises()
-  return wrapper
-}
-
-describe('focus dashboard', () => {
-  it('keeps forms and recent entries closed initially', async () => {
-    mockServer()
-    const wrapper = await render()
-    expect(wrapper.find('dialog').exists()).toBe(false)
-    expect((wrapper.get('.recent-entries').element as HTMLDetailsElement).open).toBe(false)
-    expect(wrapper.find('[data-testid="backend-check"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="timer-toggle"]').text()).toBe('Start timer')
+  it('retains manual drafts through collapse, filters and status changes', async () => {
+    server(); const w = await render()
+    await w.get('.disclosure').trigger('click')
+    await w.get('.manual-form input[placeholder]').setValue('Keep this draft')
+    await w.get('.disclosure').trigger('click')
+    await w.get('input[type="search"]').setValue('missing')
+    await w.get('.view-tabs button:nth-child(2)').trigger('click')
+    await w.get('input[type="search"]').setValue('')
+    await w.get('.view-tabs button:first-child').trigger('click')
+    await w.get('.disclosure').trigger('click')
+    expect((w.get('.manual-form input[placeholder]').element as HTMLInputElement).value).toBe('Keep this draft')
   })
-
-  it('cancels without deleting, then removes the activity, time, counts, and picker options', async () => {
-    const fetchMock = mockServer()
-    const wrapper = await render()
-    await wrapper.get('.activity-card .delete-button').trigger('click')
-    expect(wrapper.get('dialog').text()).toContain('all its recorded time')
-    await wrapper.get('dialog .connection-button').trigger('click')
-    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'DELETE')).toHaveLength(0)
-    expect(wrapper.find('.activity-card').exists()).toBe(true)
-    await wrapper.get('.activity-card .delete-button').trigger('click')
-    await wrapper.get('[data-testid="confirm-delete"]').trigger('click')
-    await flushPromises()
-    expect(fetchMock).toHaveBeenCalledWith('/api/activities/1', { method: 'DELETE' })
-    expect(wrapper.find('.activity-card').exists()).toBe(false)
-    expect(wrapper.find('dialog').exists()).toBe(false)
-    expect(wrapper.find('.recent-entries').exists()).toBe(false)
-    expect(wrapper.findAll('.metrics dd').map(item => item.text())).toEqual(['0.0h', '0', '0'])
-    expect(wrapper.get('[data-testid="timer-toggle"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('select').text()).toContain('Create an activity first')
+  it('keeps a restored timer reachable when filtered out and does not stop it', async () => {
+    const { fetch } = server({ running: true }); const w = await render()
+    await w.get('input[type="search"]').setValue('missing')
+    expect(w.get('.running-banner').text()).toContain('Learn Python')
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0)
+    await w.get('.running-banner button').trigger('click')
+    expect(w.get('.disclosure').attributes('aria-expanded')).toBe('true')
+    expect(w.get('.activity-card .delete-button').attributes('disabled')).toBeDefined()
   })
-
-  it('preserves data and shows the API error when another tab starts a timer', async () => {
-    mockServer(409)
-    const wrapper = await render()
-    await wrapper.get('.activity-card .delete-button').trigger('click')
-    await wrapper.get('[data-testid="confirm-delete"]').trigger('click')
-    await flushPromises()
-    expect(wrapper.find('.activity-card').exists()).toBe(true)
-    expect(wrapper.get('dialog [role="alert"]').text()).toContain('Stop and save')
-    expect(wrapper.get('[data-testid="confirm-delete"]').attributes('disabled')).toBeUndefined()
+  it('confirms deletion and preserves data on a concurrent timer conflict', async () => {
+    const { fetch } = server({ failDelete: true }); const w = await render()
+    await w.get('.disclosure').trigger('click'); await w.get('.activity-card .delete-button').trigger('click')
+    expect(w.get('dialog').text()).toContain('all its recorded time')
+    await w.get('[data-testid="confirm-delete"]').trigger('click'); await flushPromises()
+    expect(w.get('dialog [role="alert"]').text()).toContain('Stop and save')
+    expect(w.findAll('.activity-card')).toHaveLength(2)
+    expect(fetch.mock.calls.filter(([, i]) => i?.method === 'DELETE')).toHaveLength(1)
   })
-
-  it('disables delete for the activity with a restored timer', async () => {
-    mockServer(204, true)
-    const wrapper = await render()
-    expect(wrapper.get('.activity-card .delete-button').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('[data-testid="timer-toggle"]').text()).toBe('Stop & save')
+  it('deletes only after confirmation and updates saved totals and counts', async () => {
+    server(); const w = await render(); await w.get('.disclosure').trigger('click'); await w.get('.activity-card .delete-button').trigger('click')
+    await w.get('[data-testid="confirm-delete"]').trigger('click'); await flushPromises()
+    expect(w.findAll('.metrics dd').map(e => e.text())).toEqual(['0 min','0','1'])
+    expect(w.find('dialog').exists()).toBe(false)
+  })
+  it('validates manual entries and saves a note without duplicate clicks', async () => {
+    const { fetch } = server(); const w = await render(); await w.get('.disclosure').trigger('click')
+    const form = w.get('.manual-form'); await form.findAll('input[type="number"]')[1]!.setValue(0)
+    await form.trigger('submit'); expect(form.get('[role="alert"]').text()).toContain('1 minute')
+    await form.findAll('input[type="number"]')[1]!.setValue(30)
+    await form.get('input[type="datetime-local"]').setValue('2026-01-01T10:00')
+    await form.get('input[placeholder]').setValue('Reviewed Python')
+    await form.trigger('submit'); await form.trigger('submit'); await flushPromises()
+    const writes = fetch.mock.calls.filter(([url, init]) => url === '/api/time-entries' && init?.method === 'POST')
+    expect(writes).toHaveLength(1); expect(JSON.parse(writes[0]![1]!.body as string).note).toBe('Reviewed Python')
   })
 })

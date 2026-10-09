@@ -36,7 +36,7 @@ describe('theme selection', () => {
     expect(document.documentElement.style.colorScheme).toBe('dark')
     wrapper.unmount()
     const restored = render(false).wrapper
-    expect(restored.text()).toBe('Dark')
+    expect(restored.get('button').attributes('aria-label')).toBe('Switch to light theme')
     await restored.get('button').trigger('click')
     expect(document.documentElement.style.colorScheme).toBe('light')
     expect(localStorage.getItem('benchtime-theme')).toBe('light')
@@ -44,7 +44,7 @@ describe('theme selection', () => {
 
   it('ignores an invalid saved value', () => {
     localStorage.setItem('benchtime-theme', 'invalid')
-    expect(render(false).wrapper.text()).toBe('Light')
+    expect(render(false).wrapper.get('button').attributes('aria-label')).toBe('Switch to dark theme')
   })
 
   it('switches themes even if storage access is blocked', async () => {

@@ -24,13 +24,15 @@ BenchTimeSpender/
 └── frontend/       # Vue application and Vitest tests
 ```
 
-The backend stores activities, time entries, and the running timer in SQLite using SQLAlchemy. The Vue dashboard puts the timer first, with compact activity rows and a weekly recorded-time summary. Activity creation and manual entry use dialogs; descriptions and recent entries expand on demand.
+The backend stores activities, categories, time entries, and the running timer in SQLite using SQLAlchemy. The Vue dashboard has search/category filters, Active and Completed views, and expandable activity cards. Each card shows Today, This week, and Overall totals; expand it to time a session, record past work, edit, complete, reopen, or delete the activity. Search matches titles and descriptions and combines with category and status filters.
 
-The header's Light/Dark toggle switches the entire page and dialogs. It follows the system theme until you choose a theme, then remembers your choice in this browser's local storage.
+The header's moon/sun toggle switches the entire page and dialogs. It follows the system theme until you choose a theme, then remembers your choice in this browser's local storage.
+
+Saved time uses readable minutes/hours, such as `12 min` or `1h 20m`; a saved session shorter than a minute shows `<1 min`. Only the running timer displays seconds. **Saved this week** includes recorded time since local Monday; it excludes the active timer.
 
 ## Current status
 
-The Git repository is connected to GitHub as `origin`. The application supports activity listing, creation, deletion, and time tracking. Activity editing, progress history, notes, and richer daily/weekly productivity dashboards are upcoming work.
+The Git repository is connected to GitHub as `origin`. The application supports activity creation/editing/completion/deletion, category management, persistent timers, and manual entries with optional notes. Progress history and richer productivity dashboards remain future work.
 
 ## Backend setup (PowerShell)
 
@@ -59,24 +61,26 @@ After dependency changes, stop the server, rerun the editable install command, t
 - `GET /api/activities` lists activities in creation order.
 - `POST /api/activities` creates an activity and returns HTTP 201 with its generated ID.
 - `DELETE /api/activities/{id}` permanently removes an activity and its saved time entries in one transaction; returns HTTP 204, HTTP 404 for an unknown activity, or HTTP 409 while that activity has a running timer. Another activity can be deleted while the timer runs. Deletion reduces recorded totals.
-- Title and category are required and trimmed, with limits of 200 and 100 characters. Description is optional and limited to 2,000 characters. Completion percentage must be an integer from 0 through 100 and defaults to 0. Invalid requests return HTTP 422.
+- Title is required and trimmed, up to 200 characters. Category is optional; `category_id: null` means Uncategorized. The legacy category-name create field remains accepted. Description is optional and limited to 2,000 characters. Completion percentage must be an integer from 0 through 100 and defaults to 0. Invalid requests return HTTP 422.
 - The database starts empty and is created at `backend/benchtime.db` on server startup. This file is ignored by Git. Data survives refreshes and server restarts.
-- Use **New activity** in the dashboard, complete the form, and click **Save activity**. Refresh the page to confirm it reloads from SQLite.
+- Use **New activity**, enter a title, optionally select a category/add a description, then click **Create activity**. Expand the saved card to edit it or mark it completed. Reopen completed activities from the Completed view.
 - Use **Delete** on an activity and review the confirmation before deleting. Stop and save its running timer first. Cancel or Escape closes a dialog while idle; dialogs stay open while a request is being saved.
 - Active means completion below 100%; completed means 100%. Completion percentage is independent of time recorded.
 
 `models.py` defines database mappings, similar to EF Core entities. `schemas.py` defines validated HTTP request/response models, similar to DTOs. A SQLAlchemy `Session` tracks changes and `commit()` writes them, similar to `DbContext.SaveChanges()`. FastAPI injects a session per request through `Depends`; `yield` lets the dependency close it afterward.
 
-`create_app()` accepts a database URL so tests use temporary databases instead of personal data. Table creation at startup is sufficient for this first schema; migrations will be introduced when existing tables need changes.
+`create_app()` accepts a database URL so tests use temporary databases instead of personal data. Startup runs the versioned migration described below.
 
 ## Timer and manual time entries
 
-1. Choose an activity in the focus panel and click **Start timer**.
+1. Expand an active activity card and click **Start timer**.
 2. The timer continues across page refreshes and server restarts, using its persisted server start time. Only one timer can run at a time across browser tabs.
 3. Click **Stop & save** to record its duration. A stop lasting less than a second records one second. The elapsed display is based on timestamps rather than counting interval ticks.
-4. For past work, click **Manual entry**, select an activity, enter a local start date/time and hours/minutes, then click **Save time entry**. The UI supports durations from one minute to 24 hours; the API accepts one second to 24 hours. Entries must finish in the past.
+4. For past work, use the card's inline **Add manual entry** form: local start date/time, hours/minutes, and an optional note. Click **Add entry**. A fresh form defaults to a 30-minute session starting 30 minutes ago. Drafts survive collapsing, filtering, and switching views until saved or the page is refreshed. The UI supports durations from one minute to 24 hours; the API accepts one second to 24 hours. Entries must finish in the past. Invalid fields show an associated error and receive keyboard focus.
 
-The browser converts manual start times to UTC. The database stores UTC epoch seconds; the UI displays dates in the browser's local timezone. Expand **Recent time entries** to see the last five records. Activity totals include all saved entries. The weekly total counts the part of each saved entry between local Monday midnight and now; it excludes a timer that is still running. Overlapping entries are allowed and summed independently.
+The browser converts manual start times to UTC. The database stores UTC epoch seconds. Card totals include saved intervals and elapsed running time, allocated by overlap across local midnight/Monday boundaries (including daylight-saving changes). Overall retains the full saved durations. **Saved this week** retains its previous saved-only definition. Overlapping entries are allowed and summed independently. All historical records remain available through `GET /api/time-entries`; the recent-entry list has been replaced by the three card totals.
+
+The running-session banner stays visible when its activity is filtered out. Starting another activity asks you to stop/save the current session first. Completing or deleting a running activity is blocked until its timer stops. Refreshing or backgrounding does not reset elapsed time.
 
 API routes:
 
@@ -84,9 +88,26 @@ API routes:
 - `POST /api/timer/start`: takes `activity_id`; returns HTTP 201, or HTTP 409 if a timer already exists.
 - `POST /api/timer/{id}/stop`: saves a time entry and clears the matching timer atomically. Repeated stops return HTTP 404 and do not duplicate time.
 - `GET /api/time-entries`: recorded time, newest start first.
-- `POST /api/time-entries`: takes `activity_id`, a timezone-aware `started_at`, and integer `duration_seconds`; returns HTTP 201.
+- `POST /api/time-entries`: takes `activity_id`, a timezone-aware `started_at`, integer `duration_seconds`, and optional `note`; returns HTTP 201.
 
-Restart the backend after updating the code; startup creates the new tables without changing existing activities. No new dependencies are required for this step.
+Restart the backend after updating the code. No new dependencies are required for this redesign.
+
+## Categories and migration
+
+**Manage categories** creates/edits named categories with colors and assigned-activity counts. Names are trimmed and case-insensitively unique; Uncategorized is a protected null fallback. Renaming retains the category ID and current filter. Deleting requires an explicit destination category or Uncategorized; reassignment and deletion happen atomically, preserving activity IDs, timers, history, and notes. Version/count checks reject stale confirmations from other tabs. Browsers supporting customizable native selects display colored dots in the category dropdown; other browsers retain the native labeled options.
+
+API: `GET/POST /api/categories`, `PUT/DELETE /api/categories/{id}`, and `PATCH /api/activities/{id}`. Category updates require `expected_version`; deletion requires that version, `expected_activity_count`, and explicit `reassign_to` (an ID or null).
+
+On the first startup against a legacy database, migration v1 saves `backend/benchtime.db.pre-redesign-v1.bak` using SQLite's backup API. It adds categories/category IDs and optional entry notes without changing historical IDs, timestamps, completion percentages, or durations. Case variants of an existing category share one ID. `schema_versions` records completion; subsequent starts do not reapply it. No demonstration activities are inserted.
+
+To restore the pre-redesign snapshot, stop FastAPI, preserve the current database, restore the backup, and use the earlier backend code before restarting. Restoring the snapshot omits records created after that backup; keep the current copy if you need those records:
+
+```powershell
+Copy-Item -LiteralPath backend/benchtime.db -Destination backend/benchtime.redesign-current.db
+Copy-Item -LiteralPath backend/benchtime.db.pre-redesign-v1.bak -Destination backend/benchtime.db -Force
+```
+
+Running the new backend on the restored legacy file will migrate it again. Keep database files/backups out of Git.
 
 ## Frontend setup (second PowerShell)
 
@@ -120,7 +141,7 @@ The tests mock HTTP requests to exercise the component independently of FastAPI.
 - `fetch` performs HTTP requests; `await` waits for the response and JSON body. Check `response.ok` because HTTP error responses do not automatically reject the promise.
 - TypeScript types describe JSON shapes for tooling; they do not validate JSON at runtime.
 
-`AppDialog.vue` wraps the native HTML `dialog` element. `showModal()` lets the browser manage focus and block interaction with the background. Vue `defineEmits` declares typed component events, much like a C# event contract. The timer emits saved entries to the parent dashboard, which recalculates the totals.
+`AppDialog.vue` wraps the native HTML `dialog` element, traps keyboard focus, restores the trigger, and warns before discarding dirty forms. Vue `defineEmits` declares typed component events, much like a C# event contract. `useTracker()` shares one timer/entry state across cards, similar to a scoped state service; cards use `v-show` to preserve drafts while hidden. `timeTotals()` is the single tested function for interval allocation.
 
 ## Milestone 1 sequence
 
@@ -139,7 +160,7 @@ Vue ← JSON response      ← Vite development proxy ← FastAPI
 
 Vite serves the frontend during development and forwards `/api` requests to the backend. Vue then displays the returned data.
 
-Later milestones will add activity editing, progress history, notes, and richer daily/weekly productivity dashboards.
+Later milestones will add progress history and richer daily/weekly productivity dashboards.
 
 ## Working agreement
 

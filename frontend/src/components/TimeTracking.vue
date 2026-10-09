@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { formatDuration, type TimeEntry } from '../time'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { formatDuration, formatSavedTime, type TimeEntry } from '../time'
 import AppDialog from './AppDialog.vue'
 
 const props = defineProps<{ activities: { id: number; title: string }[] }>()
@@ -15,6 +15,13 @@ const notice = ref('')
 const now = ref(Date.now())
 const showManual = ref(false)
 const manualError = ref<string | null>(null)
+const activityError = ref<string | null>(null)
+const startError = ref<string | null>(null)
+const durationError = ref<string | null>(null)
+const activityInput = ref<HTMLSelectElement | null>(null)
+const startInput = ref<HTMLInputElement | null>(null)
+const hoursInput = ref<HTMLInputElement | null>(null)
+const minutesInput = ref<HTMLInputElement | null>(null)
 const manualActivity = ref<number | null>(null)
 const manualStart = ref('')
 const hours = ref(0)
@@ -67,14 +74,13 @@ async function toggleTimer() {
   notice.value = ''
   try {
     if (timer.value) {
-      await request<TimeEntry>(`/api/timer/${timer.value.id}/stop`, { method: 'POST' })
-      notice.value = 'Timer stopped. Time saved.'
+      const entry = await request<TimeEntry>(`/api/timer/${timer.value.id}/stop`, { method: 'POST' })
+      notice.value = `Saved ${formatSavedTime(entry.duration_seconds)} to ${activityTitle(entry.activity_id)}.`
     } else {
       await request<Timer>('/api/timer/start', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ activity_id: selected.value }),
       })
-      notice.value = 'Timer started.'
     }
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Timer request failed.'
@@ -88,24 +94,44 @@ async function toggleTimer() {
 
 function openManual() {
   showManual.value = true
-  manualActivity.value = selected.value
+  if (!manualStart.value) {
+    manualActivity.value = timer.value?.activity_id ?? selected.value
+    const start = new Date(Date.now() - 30 * 60 * 1000)
+    manualStart.value = new Date(start.getTime() - start.getTimezoneOffset() * 60 * 1000).toISOString().slice(0, 16)
+  }
   manualError.value = null
+  activityError.value = null
+  startError.value = null
+  durationError.value = null
   notice.value = ''
 }
 
 async function saveManual() {
+  manualError.value = null
+  activityError.value = null
+  startError.value = null
+  durationError.value = null
   const start = new Date(manualStart.value)
   const duration = hours.value * 3600 + minutes.value * 60
-  if (!manualActivity.value || !Number.isFinite(start.getTime()) || !Number.isInteger(duration)
-    || duration < 60 || duration > 86400 || start.getTime() + duration * 1000 > Date.now()) {
-    manualError.value = 'Choose an activity and a past start time. Duration must be 1 minute to 24 hours and finish in the past.'
+  if (!props.activities.some(activity => activity.id === manualActivity.value)) activityError.value = 'Choose an activity.'
+  if (!Number.isInteger(hours.value) || hours.value < 0 || hours.value > 24
+    || !Number.isInteger(minutes.value) || minutes.value < 0 || minutes.value > 59
+    || duration < 60 || duration > 86400) durationError.value = 'Use a duration between 1 minute and 24 hours, with minutes from 0 to 59.'
+  if (!Number.isFinite(start.getTime())) startError.value = 'Enter a start date and time.'
+  else if (!durationError.value && start.getTime() + duration * 1000 > Date.now()) startError.value = 'Choose an earlier start: this session would finish in the future.'
+  if (activityError.value || durationError.value || startError.value) {
+    await nextTick()
+    if (activityError.value) activityInput.value?.focus()
+    else if (startError.value) startInput.value?.focus()
+    else if (!Number.isInteger(minutes.value) || minutes.value < 0 || minutes.value > 59) minutesInput.value?.focus()
+    else hoursInput.value?.focus()
     return
   }
   busy.value = true
   manualError.value = null
   notice.value = ''
   try {
-    await request<TimeEntry>('/api/time-entries', {
+    const entry = await request<TimeEntry>('/api/time-entries', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ activity_id: manualActivity.value, started_at: start.toISOString(), duration_seconds: duration }),
     })
@@ -113,7 +139,7 @@ async function saveManual() {
     manualStart.value = ''
     hours.value = 0
     minutes.value = 30
-    notice.value = 'Manual entry saved.'
+    notice.value = `Saved ${formatSavedTime(entry.duration_seconds)} to ${activityTitle(entry.activity_id)}.`
     try { await refresh() }
     catch { error.value = 'Entry saved, but could not reload tracking. Retry loading before continuing.' }
   } catch (cause) {
@@ -134,16 +160,19 @@ defineExpose({ reload })
     <div class="tracking-heading">
       <div>
         <h2 id="tracking-heading">{{ timer ? 'Currently tracking' : 'Your next focus session' }}</h2>
-        <p v-if="timer" class="muted">{{ activityTitle(timer.activity_id) }}</p>
       </div>
-      <button class="manual-button" :disabled="busy || !ready || !activities.length" @click="openManual">Manual entry</button>
+      <button class="manual-button quiet-button" :disabled="busy || !ready || !activities.length" @click="openManual">Add time manually</button>
     </div>
     <div class="tracking-actions">
-      <select v-model="selected" aria-label="Activity to track" :disabled="busy || !!timer || !ready">
+      <div class="session-field">
+      <label v-if="!timer" for="timer-activity">Activity</label>
+      <select v-show="!timer" id="timer-activity" v-model="selected" aria-label="Activity to track" :disabled="busy || !!timer || !ready">
         <option v-if="!activities.length" :value="null">Create an activity first</option>
         <option v-for="activity in activities" :key="activity.id" :value="activity.id">{{ activity.title }}</option>
       </select>
-      <div class="timer" aria-label="Elapsed time">{{ formatDuration(elapsed) }}</div>
+      <p v-if="timer" class="running-title">{{ activityTitle(timer.activity_id) }}</p>
+      </div>
+      <div class="timer" role="timer" aria-label="Elapsed time">{{ formatDuration(elapsed) }}</div>
       <button class="timer-button" data-testid="timer-toggle" :disabled="busy || !ready || (!timer && !selected)" @click="toggleTimer">
         {{ busy ? 'Working…' : timer ? 'Stop & save' : 'Start timer' }}
       </button>
@@ -154,19 +183,27 @@ defineExpose({ reload })
       <button v-if="!ready" class="connection-button" :disabled="busy" @click="reload">Retry tracking</button>
     </div>
     <p v-if="notice" class="muted" role="status">{{ notice }}</p>
-    <AppDialog v-if="showManual" title="Manual time entry" :busy="busy" @close="showManual = false">
-    <form class="activity-form" @submit.prevent="saveManual">
-      <label>Activity<select v-model="manualActivity" :disabled="busy" required>
+    <AppDialog v-if="showManual" title="Add time manually" :busy="busy" @close="showManual = false">
+    <form class="activity-form" novalidate @submit.prevent="saveManual">
+      <label>Activity<select ref="activityInput" v-model="manualActivity" :disabled="busy" required
+        :aria-invalid="activityError ? true : undefined" :aria-describedby="activityError ? 'manual-activity-error' : undefined">
         <option v-for="activity in activities" :key="activity.id" :value="activity.id">{{ activity.title }}</option>
       </select></label>
-      <label>Start date and time<input v-model="manualStart" name="started_at" type="datetime-local" required :disabled="busy" /></label>
+      <p v-if="activityError" id="manual-activity-error" role="alert">{{ activityError }}</p>
+      <label>Start date and time<input ref="startInput" v-model="manualStart" name="started_at" type="datetime-local" required :disabled="busy"
+        :aria-invalid="startError ? true : undefined" :aria-describedby="startError ? 'manual-time-hint manual-start-error' : 'manual-time-hint'" /></label>
+      <p id="manual-time-hint" class="muted">Use your local time. The session must have finished.</p>
+      <p v-if="startError" id="manual-start-error" role="alert">{{ startError }}</p>
       <div class="duration-fields">
-        <label>Hours<input v-model.number="hours" name="hours" type="number" min="0" max="24" step="1" required :disabled="busy" /></label>
-        <label>Minutes<input v-model.number="minutes" name="minutes" type="number" min="0" max="59" step="1" required :disabled="busy" /></label>
+        <label>Hours<input ref="hoursInput" v-model.number="hours" name="hours" type="number" min="0" max="24" step="1" required :disabled="busy"
+          :aria-invalid="durationError ? true : undefined" :aria-describedby="durationError ? 'manual-duration-error' : undefined" /></label>
+        <label>Minutes<input ref="minutesInput" v-model.number="minutes" name="minutes" type="number" min="0" max="59" step="1" required :disabled="busy"
+          :aria-invalid="durationError ? true : undefined" :aria-describedby="durationError ? 'manual-duration-error' : undefined" /></label>
       </div>
+      <p v-if="durationError" id="manual-duration-error" role="alert">{{ durationError }}</p>
       <p v-if="manualError" role="alert">{{ manualError }}</p>
       <div class="dialog-actions"><button class="connection-button" type="button" :disabled="busy" @click="showManual = false">Cancel</button>
-        <button class="save-button" type="submit" :disabled="busy">{{ busy ? 'Saving…' : 'Save time entry' }}</button></div>
+        <button class="save-button" type="submit" :disabled="busy">{{ busy ? 'Saving…' : 'Save time' }}</button></div>
     </form>
     </AppDialog>
   </section>

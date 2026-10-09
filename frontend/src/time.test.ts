@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { formatDuration, weeklySeconds, type TimeEntry } from './time'
+import { formatDuration, formatSavedTime, weeklySeconds, type TimeEntry } from './time'
 
 describe('time calculations', () => {
+  it.each([
+    [0, '0 min'], [7, '<1 min'], [59, '<1 min'], [60, '1 min'],
+    [720, '12 min'], [3600, '1h'], [4800, '1h 20m'], [90000, '25h'],
+  ])('formats %i saved seconds as %s', (seconds, expected) => {
+    expect(formatSavedTime(seconds)).toBe(expected)
+  })
   it('formats seconds without wrapping after 24 hours', () => {
     expect(formatDuration(0)).toBe('00:00:00')
     expect(formatDuration(5075)).toBe('01:24:35')

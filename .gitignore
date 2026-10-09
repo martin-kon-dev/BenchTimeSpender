@@ -26,6 +26,7 @@ coverage/
 
 # Local SQLite data, including journal and WAL files
 *.db
+*.db.pre-redesign-*.bak
 *.db-*
 *.sqlite
 *.sqlite-*

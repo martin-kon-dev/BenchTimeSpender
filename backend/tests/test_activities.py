@@ -17,7 +17,7 @@ def test_create_and_list_activity(client):
     assert response.status_code == 201
     activity = response.json()
     assert activity == {
-        "id": 1, "title": "Learn Python", "category": "Learning",
+        "id": 1, "title": "Learn Python", "category": "Learning", "category_id": 1,
         "description": "Practice FastAPI", "completion_percentage": 0,
     }
     assert client.get("/api/activities").json() == [activity]

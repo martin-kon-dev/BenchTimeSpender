@@ -29,6 +29,8 @@ def get_timer(session: DatabaseSession):
 def start_timer(data: TimerStart, session: DatabaseSession):
     session.connection().exec_driver_sql("BEGIN IMMEDIATE")
     require_activity(session, data.activity_id)
+    if session.get(Activity, data.activity_id).completion_percentage == 100:
+        raise HTTPException(409, "Reopen this activity before starting a timer.")
     timer = RunningTimer(slot=1, id=str(uuid4()), activity_id=data.activity_id, started_at=int(time.time()))
     session.add(timer)
     try:
@@ -73,7 +75,7 @@ def create_manual_entry(data: ManualEntryCreate, session: DatabaseSession):
         raise HTTPException(422, "The entry must finish in the past.")
     entry = TimeEntry(
         activity_id=data.activity_id, started_at=int(start),
-        duration_seconds=data.duration_seconds, source="manual",
+        duration_seconds=data.duration_seconds, source="manual", note=data.note,
     )
     session.add(entry)
     session.commit()
